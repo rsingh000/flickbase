@@ -3,6 +3,7 @@ let router = express.Router();
 require('dotenv').config();
 const { checkLoggedIn } = require('../../middlewares/auth');
 const { grantAccess } = require('../../middlewares/roles');
+const  { contactMail, registerEmail} = require('../../config/email');
 
 
 const { User } = require('../../models/user_model');
@@ -22,6 +23,9 @@ router.route('/register')
 
         const token = user.generateToken();
         const doc = await user.save();
+
+        const emailToken = user.generateRegisterToken();
+        await registerEmail(doc.email,emailToken);
 
         res.cookie('x-access-token',token).status(200).send(getUserProps(doc))
     } catch(err){
@@ -120,6 +124,32 @@ router.route('/isauth')
     res.status(200).send(getUserProps(req.user))
 })
 
+router.route('/contact')
+.post(async(req,res)=>{
+    try{
+        await contactMail(req.body)
+        res.status(200).send('ok');
+    } catch(error){
+        res.status(400).json({message:"Sorry, try again later",error:error});
+    }
+})
+
+router.route('/verify')
+.get( async(req,res)=>{
+    try{
+        const token = User.validateToken(req.query.validation);
+        const user = await User.findById(token._id);
+        if(!user) return res.status(400).json({ message: 'User not found!!!'});
+        if(user.verified) return res.status(400).json({messgae:'Already verified!!!'});
+
+        user.verified = true;
+
+        await user.save();
+        res.status(200).send(getUserProps(user));
+    } catch(error){
+        res.status(400).send(error)
+    }
+})
 
 const getUserProps = (user) => {
     return {
@@ -128,7 +158,8 @@ const getUserProps = (user) => {
         firstname: user.firstname,
         lastname: user.lastname,
         age: user.age,
-        role: user.role
+        role: user.role,
+        verified:user.verified
     }
 }
 

@@ -5,6 +5,8 @@ const { grantAccess } = require('../../middlewares/roles');
 const { sortArgsHelper } = require('../../config/helpers');
 
 const { Article } = require('../../models/article_model');
+const { Category } = require('../../models/category_model');
+
 
 router.route('/admin/add_articles')
 .post(checkLoggedIn,grantAccess('createAny','article'), async (req,res)=>{
@@ -71,8 +73,16 @@ router.route('/admin/:id')
 router.route('/admin/paginate')
 .post(checkLoggedIn,grantAccess('readAny','articles'),async (req,res)=>{
     try {
+        let aggQuery;
+        if(req.body.keywords != ''){
+            const re = new RegExp(`${req.body.keywords}`,'gi');
+            aggQuery = Article.aggregate([
+                { $match: { title:{ $regex:re }}}
+            ])
+        } else {
+            aggQuery = Article.aggregate();
+        }
         const limit = req.body.limit ? req.body.limit : 5;
-        const aggQuery = Article.aggregate();
         const options = {
             page: req.body.page,
             limit,
@@ -83,6 +93,33 @@ router.route('/admin/paginate')
         res.status(200).json(articles);
     } catch(err) {
         res.status(400).json({message:'Error', error: err});
+    }
+})
+
+router.route("/user/search")
+.post(async(req,res)=>{
+    try{
+        if(req.body.keywords == ''){
+            return res.status(400).json({message:'No Empty Search'})
+        }
+
+        const re = new RegExp(`${req.body.keywords}`,'gi');
+        let aggQuery = Article.aggregate([
+            { $match: { status:"public"}},
+            { $match: { title:{ $regex:re}}}
+        ]);
+
+        const limit = req.body.lmit ? req.body.limit : 5;
+        const options = {
+            page: req.body.page,
+            limit,
+            sort:{_id:'desc'}
+        }
+
+        const articles = await Article.aggregatePaginate(aggQuery,options);
+        res.status(200).json(articles);
+    }catch(error){
+        res.status(400).json({message:'Error',error});
     }
 })
 
@@ -117,5 +154,24 @@ router.route('/loadmore')
         res.status(400).json({message:'Error fetching articles', error: err});
     }
 })
+
+router.route("/categories")
+.get(async(req,res)=>{
+    try{
+        const categories = await Category.find();
+        res.status(200).json(categories);
+    } catch(error){
+        res.status(400).json({message:'Error getting categories',error})
+    }
+})
+.post(checkLoggedIn,grantAccess('createAny','categories'),async(req,res)=>{
+    try{
+        const category = new Category(req.body);
+        await category.save()
+
+        res.status(200).json(category);
+    } catch(error){
+        res.status(400).json({message:"Error adding categories",error})
+    }})
 
 module.exports = router;
